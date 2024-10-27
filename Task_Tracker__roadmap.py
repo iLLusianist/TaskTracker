@@ -54,7 +54,7 @@ class TaskLogic:
             return task
         return None
 
-    def recolculate_task_index(self):
+    def recalculate_task_index(self):
         index = 1
         for task in self.tasks:
             task['id'] = index
