@@ -64,7 +64,7 @@ class TaskLogic:
         task = self.get_task_by_id(task_id)
         if task is not None:
             self.tasks.remove(task)
-            self.recolculate_task_index()
+            self.recalculate_task_index()
             self.save_tasks()
             return task
         return None
