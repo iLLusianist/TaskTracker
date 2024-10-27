@@ -1,1 +1,1 @@
-# Изменена структура
+# redesigned structure
