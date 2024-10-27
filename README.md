@@ -1,1 +1,2 @@
-# redesigned structure
+# Task tracker
+v1.0

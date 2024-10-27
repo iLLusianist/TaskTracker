@@ -8,6 +8,7 @@ class TaskLogic:
         self.tasks = []
         self.status_list = ['todo', 'in-progress', 'done']
         
+    """Загружаем задачи из файла"""
     def load_tasks(self):   
         try:
             with open(self.file_name, 'r') as openedFile:
@@ -15,10 +16,15 @@ class TaskLogic:
         except (FileNotFoundError, json.JSONDecodeError):
             self.tasks = []
 
+    """Сохраняем задачи в файл"""
     def save_tasks(self):
-        with open(self.file_name, 'w') as openedFile:
-            json.dump(self.tasks, openedFile)
+        try:
+            with open(self.file_name, 'w') as openedFile:
+                json.dump(self.tasks, openedFile)
+        except Exception as ex:
+            print(f'Произошла ошибка при сохранении: {ex}')
 
+    """Найти задачу по ID"""
     def get_task_by_id(self, task_id):
         self.load_tasks()
         try: 
@@ -28,6 +34,7 @@ class TaskLogic:
             return None
         return None
 
+    """Добавить новую задачу"""
     def add_task(self, description):
         self.load_tasks()
         if self.tasks:
@@ -45,6 +52,7 @@ class TaskLogic:
         self.save_tasks()
         return new_task
 
+    """Обновить описание задачи"""
     def update_task(self, task_id, description):
         task = self.get_task_by_id(task_id)
         if task is not None:
@@ -54,12 +62,14 @@ class TaskLogic:
             return task
         return None
 
+    """Пересчитать индекс"""
     def recalculate_task_index(self):
         index = 1
         for task in self.tasks:
             task['id'] = index
             index += 1
 
+    """Удалить задачу по ID"""
     def delete_task(self, task_id):
         task = self.get_task_by_id(task_id)
         if task is not None:
@@ -69,6 +79,7 @@ class TaskLogic:
             return task
         return None
 
+    """Изменить статус задачи"""
     def mark_task(self, task_id, new_status):
         task = self.get_task_by_id(task_id)
         if task is not None and new_status in self.status_list:
@@ -81,6 +92,7 @@ class TaskLogic:
                 return task
         return None
 
+    """Получить список задач, отфильтрованный по статусу"""
     def filter_tasks_by_status(self, status = None):
         self.load_tasks()
         if status is None:
@@ -96,8 +108,8 @@ class TaskView:
 
     def display_help(self, commands):
         help_text = '---Help---'
-        for command in commands:
-            help_text += f'\ntask {commands[command][1]}'
+        for command, info in commands.items():
+            help_text += f'\ntask {info[1]}'
         self.show_message(help_text)
 
     def list_tasks(self, tasks, status = None):
@@ -133,60 +145,74 @@ class TaskController():
         self.logic: TaskLogic = logic
         self.view: TaskView = view 
         self.commands = {
-            'add': [2, 'add (Task)', {}],
-            'delete': [3, 'delete (Task ID)', {}],
-            'update': [3, 'update (Task ID) (New task)', {}],
-            'mark': [4, 'mark (Task ID) (New status [todo / in-progress / done])', {}], 
-            'list': [2, 'list [todo / in-progress / done]', {'todo': 3, 'in-progress': 3, 'done': 3}], 
-            'help': [2, 'help', {}],
-            'exit': [2, 'exit', {}]
+            'add': [self.handle_add, 'add (Task)'],
+            'delete': [self.handle_delete, 'delete (Task ID)'],
+            'update': [self.handle_update, 'update (Task ID) (New task)'],
+            'mark': [self.handle_mark, f'mark (Task ID) (New status {self.logic.status_list})'], 
+            'list': [self.handle_list, f'list {self.logic.status_list}'], 
+            'help': [self.handle_help, 'help'],
+            'exit': [self.handle_exit, 'exit']
         }
+
+    def handle_add(self, args):
+        if len(args) >= 1:
+            task = self.logic.add_task(' '.join(args))
+            self.view.add_task_successfully(task['id'])
+        else: raise ValueError('task description not specified')
+
+    def handle_delete(self, args):
+        if len(args) == 1:
+            task = self.logic.delete_task(args[0])
+            if task: self.view.delete_task_successfully(task['id'])
+            else: raise ValueError(f"task with number '{args[0]}' not found")
+        else: raise ValueError('invalid number of arguments, please specify only the task number to be deleted')
+
+    def handle_update(self, args):
+        if len(args) >= 2:
+            task = self.logic.update_task(args[0], args[1:])
+            if task: self.view.update_task_successfully(task['id'])
+            else: raise ValueError(f"task with number '{args[0]}' cannot be updated")
+        else: raise ValueError('invalid number of arguments, please specify the task number to be changed and a new task description')
+
+    def handle_mark(self, args):
+        if len(args) == 2:
+            task = self.logic.mark_task(args[0], args[1])
+            if task: self.view.mark_task_successfully(task['id'], task['status'])
+            else: raise ValueError(f"task with number '{args[0]}' not found, status '{args[1]}' unavailable or status '{args[1]}' already applied")
+        else: raise ValueError(f'invalid number of arguments, please provide task number and new status {self.logic.status_list}')
+
+    def handle_list(self, args):
+        if len(args) == 0:
+            task = self.logic.filter_tasks_by_status(None)
+            self.view.list_tasks(task, None)
+        elif len(args) == 1:
+            if args[0] in self.logic.status_list:
+                try:
+                    task = self.logic.filter_tasks_by_status(args[0])
+                    self.view.list_tasks(task, args[0])
+                except IndexError: raise ValueError(f'invalid argument, please specify the task status {self.logic.status_list}')
+            else: raise ValueError(f"status '{args[0]}' does not exist ")
+        else: raise ValueError('invalid number of arguments')
+
+    def handle_help(self, args = None):
+        self.view.display_help(self.commands)
+
+    def handle_exit(self, args = None):
+        exit()
 
     def run(self):
         self.view.show_message('---Task list---')
         while True:
             user_input = self.view.get_user_input('\n>')
             command_parts = user_input.split()
-            if len(command_parts) >= 2:            
-                if command_parts[0] == 'task':
-                    command = command_parts[1] 
-                    if command in self.commands:
-                        command_info = self.commands[command]                                            
-                        if len(command_parts) > command_info[0]:
-                            if command == 'add':
-                                task = self.logic.add_task(' '.join(command_parts[2:]))
-                                self.view.add_task_successfully(task['id'])
-                            elif command == 'update':
-                                task = self.logic.update_task(command_parts[2], command_parts[3:])
-                                if task: self.view.update_task_successfully(task['id'])
-                                else: self.view.invalid_parameter_error()
-                            elif command == 'list' and len(command_parts) == command_info[0]+1:
-                                if command_parts[2] in self.commands['list'][2]: status = command_parts[2] 
-                                else:
-                                    self.view.invalid_parameter_error()
-                                    continue
-                                task = self.logic.filter_tasks_by_status(status)
-                                self.view.list_tasks(task, status)
-                            else: self.view.invalid_command_error()
-                        elif len(command_parts) == command_info[0]:
-                            if command == 'delete':
-                                task = self.logic.delete_task(command_parts[2])
-                                if task: self.view.delete_task_successfully(task['id'])
-                                else: self.view.invalid_parameter_error()
-                            elif command == 'mark':
-                                task = self.logic.mark_task(command_parts[2], command_parts[3])
-                                if task: self.view.mark_task_successfully(task['id'], task['status'])
-                                else: self.view.invalid_parameter_error()
-                            elif command == 'help':
-                                self.view.display_help(self.commands)
-                            elif command == 'list':
-                                task = self.logic.filter_tasks_by_status(None)
-                                self.view.list_tasks(task, None)
-                            elif command == 'exit':
-                                exit()
-                            else: self.view.invalid_parameter_error()
-                        else: self.view.invalid_command_error()
-                    else: self.view.invalid_command_error()
+            if len(command_parts) >= 2 and command_parts[0] == 'task':
+                command = command_parts[1]
+                if command in self.commands:
+                    args = command_parts[2:]
+                    try:
+                        self.commands[command][0](args)
+                    except Exception as ex:
+                        self.view.show_message(f'Error: {ex}')
                 else: self.view.invalid_command_error()
             else: self.view.invalid_command_error()
 
